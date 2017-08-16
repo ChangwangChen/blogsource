@@ -3,10 +3,10 @@
 ## Source: https://github.com/hexojs/hexo/
 
 # Site
-title: Changwang
+title: changwang's blog
 subtitle: 诗酒趁年华
-description: Nginx PHP LibEvent OS
-author: Chen Changwang
+description: PHP Redis Nginx Linux
+author: 昶王
 language: zh-Hans
 timezone: Asia/Shanghai
 
@@ -63,7 +63,7 @@ pagination_dir: page
 # Extensions
 ## Plugins: https://hexo.io/plugins/
 ## Themes: https://hexo.io/themes/
-theme: next
+theme: yilia
 
 # Deployment
 ## Docs: https://hexo.io/docs/deployment.html
@@ -71,3 +71,23 @@ deploy:
   type: git
   repository: https://github.com/Cyw1104/cyw1104.github.io.git
   branch: master
+
+# 生成文章索引
+jsonContent:
+  meta: false
+  pages: false
+  posts:
+    title: true
+    date: true
+    path: true
+    text: false
+    raw: false
+    content: false
+    slug: false
+    updated: false
+    comments: false
+    link: false
+    permalink: false
+    excerpt: false
+    categories: false
+    tags: true

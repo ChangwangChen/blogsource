@@ -9,6 +9,8 @@ tags: [Redis]
 项目中使用[Redis](http://www.redis.cn)做缓存配置，为了实现HA（High Availability），需要配置 [Redis Sentinel](http://www.redis.cn/topics/sentinel.html)
 来做Redis的故障转移监控。
 
+<!--more-->
+
 # 环境搭建
 我们测试环境使用的Redis主从复制架构和Sentinel监控都很简单。总的来说就是在2台服务器上面做Redis主从复制，然后在其中一台服务器上面部署
 Redis Sentinel服务做监控。

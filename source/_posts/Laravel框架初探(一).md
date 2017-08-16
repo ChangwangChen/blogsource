@@ -13,6 +13,8 @@ tags: [Laravel]
 
 现在网上有很多关于Laravel框架的学习网站，但是为了记录我自己学习的历程和思路整理，开始写这个系列博客。
 
+<!--more-->
+
 # Laravel 的基本理念
 
 Laravel 官方打出的口号是 `A PHP Framework For Web Artisans` -- `为Web艺术家打造的PHP框架`。对于我们这些使用者来说她确实做到了这些。
