@@ -361,7 +361,7 @@ sds sdscatfmt(sds s, char const *fmt, ...) {
     s[i] = '\0';
     return s;
 }
-``` 
+```
 
 ### sdssplitlen 分割字符串为数组
 
