@@ -16,6 +16,14 @@ Redis的学习总结文章我大概分为以下四个部分:
 - 其他
 
 来进行讲述. 这是数据结构部分SDS分析的第二篇, 主要讲解SDS的具体实现, SDS类型背景及优点的讲解参见上一篇[Redis源码--sds分析](/2017/09/04/Redis源码--sds分析/).
+
+```
+Redis里面SDS数据结构的实现,给我们自己设计C语言String类型提供了新的思路.
+
+例如, 为了保证二进制安全, 代码里面的String操作函数底层都是基于mem*(): memcpy(), memcmp(), memset(), memmove(). 
+
+```
+
 <!--more-->
 
 ## sdshdr以及sds类型
