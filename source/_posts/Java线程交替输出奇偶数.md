@@ -8,6 +8,9 @@ tags: [Java]
 
 ## 直接上代码
 
+
+<!--more-->
+
 ```java
 
 
@@ -100,6 +103,3 @@ public class Evaluate{
 
 
 ```
-
-
-<!--more-->

@@ -19,6 +19,8 @@ Redis的学习总结文章我大概分为以下四个部分:
 
 Redis实现List使用的是双向链表， 所以在 List 的头尾节点都能进行操作。我们来看下 List 的基本数据结构。
 
+<!--more-->
+
 ```c
 //List数据结构
 typedef struct list {
@@ -765,5 +767,3 @@ int serveClientBlockedOnList(client *receiver, robj *key, robj *dstkey, redisDb 
 这篇文章主要分析了 Redi 中 List 的基本实现和 BLPOP 命令执行对于 Client 的 Block 和 UnBlock 的详细流程。
 
 当然， List 的内容肯定不止这些， 比如 List 会使用到 zipist 的数据结构来减小内存的使用， Client 的 UnBlock 还可能是由阻塞超时引起的等等。 我们在其他的文章中会在进行详细的解答。
-
-<!--more-->
