@@ -250,18 +250,237 @@ TCP 是否遵循 RFC 1337。当关闭时， 处于 TIME_WAIT 状态的链接收�
 
 ```
 SACK：
-TCP 接收方在接收异常（例如：数据流产生空洞， 数据包乱序）的时候，在 ACK 报文中主动返回导致乱序的数据段信息。
+TCP 接收方在接收异常（例如：数据包乱序）的时候，在 ACK 报文中主动返回导致乱序的数据段信息。
 
 D-SACK：
+D-SACK主要是使用了SACK来告诉发送方有哪些数据被重复接收了，如果是D-SACK，那么SACK option的第一个block代表被重复发送的序列号。
+```
+### #tcp_slow_start_after_idle （Boolean；默认：1；Linux 2.6.18 - ）
+
+如果开启，TCP 将遵循 `RFC 2861` 规范， 会在一段空闲时间之后，将 `拥塞窗口` 超时（拥塞窗口大小直接置0, 表示进入慢启动）。`一段空闲时间` 直接采用当前的 `RTO` （重传超时）时间。如果关闭， 一段空闲时间之后， 拥塞窗口不会重置。
+
+### #tcp_stdurg （Boolean；默认： 0； Linux 2.2 - ）
+
+这个选项关联着 TCP 对 `Urgent-Pointer（紧急指针）` 的解释。
+
+- 1 （开启） 
+  使用 RFC 1122 来解释紧急指针， 紧急指针指向的是紧急数据的结尾
+
+- 0 （关闭）
+  使用兼容BSD的解释， 紧急指针指向的是紧急数据结尾的下一个字节。
+
+注意： 开启此配置可能会导致链接两端的互通性问题。
+
+### #tcp_syn_retries （Integer；默认：6； Linux 2.2 - ）
+
+建立链接时， SYN 报文（`主动开启端`）的最大重传次数。`此配置不应大于255`。默认值是6, 大约会重试 127 秒。在Linux 3.7 之前， 默认值是 5 （基于其他内核参数计算出来）， 大约会重试 180 秒。
+
+### #tcp_synack_retries（Integer； 默认： 5； Linux 2.2 - ）
+
+建立链接时， SYN/ACK 报文（`被动开启端`） 的最大重传次数。`此配置不应大于255`。
+
+### #tcp_syncookies（Boolean； Linux 2.2 - ）
+
+如果开启 TCP syncookies， 内核需要开启 `CONFIG_SYN_COOKIES` 选项重新编译。开启此配置项之后， TCP 在 `SYN 队列（半链接队列）` 满了之后开始发送 `syncookies`应答报文。此配置项为了保护 `SYN flood attack`， 但是建议只有在最后关头开启。此配置项违反了 TCP 规范 （`同意链接的 SYN 可能不保持递增`）， 也和 TCP 的其他部分存在冲突。开启此配置项可能会影响到客户端和中继器。`不建议通过调整此配置项应对高负载服务器的过载或者错误的配置条件`。我们可以通过调整 `tcp_max_syn_backlog`，`tcp_synack_retries` 和 `tcp_abort_on_overflow` 来代替。
+
+### #tcp_timestamps （Integer； 默认： 1；Linux 2.2 - ）
+
+设置下面的值来开启或者关闭 `RFC 1323 TCP timestamps`:
+
+- 0 关闭
+- 1 开启时间戳。按照 RFC 1323 规范对每个链接使用随机的偏离量而不是仅仅使用当前时间。
+- 2 开启时间戳。不是用随机的偏移量。
+
+```
+TCP timestamps 在 RFC 1323 中有以下2个作用：
+1. RTTM (测量 RTT）
+2. PAWS（Protect Againest Wrapped Sequence）
+    序列号只有 2^32 个， 高宽带网络可能会因为序列号用尽而出现重复
+
+缺点：
+1. 需要额外占用 10 字节的 TCP 首部
+2. 暴露了机器的运行时间， 间接的说明可能没有应用那些需要重启的补丁而存在系统漏洞
 
 ```
 
+### #tcp_tso_win_divisor（Integer；默认： 3；Linux 2.6.9 - ）
 
+此配置项控制了单个 `TSO` 帧可以占用拥塞窗口的百分比。此配置项的修改是为了在突发性和建造更大 `TSO` 帧之间的权衡。
+```
+TSO（Tcp Segmentation Offload）：
+一种利用网卡来对大数据包进行自动分段， 降低 CPU 负载的技术。主要是延迟分段。
 
+GSO（Generic Segmengtation Offload）：
+协议栈在发送数据到网卡之前， 首先判断网卡是否支持 TSO， 支持则让网卡分段， 否则协议栈进行分段。（如果 TSO 开启， GSO 自动开启）。
+```
+### #tcp_tw_recycle（Boolean；默认：0； Linux 2.4 - 4.11）
 
+开启快速回收处于 `TIME_WAIT` 状态的 socket。`不建议在对端没有使用单调递增的时间戳时开启此配置项（例如： NAT后端服务、每个链接时间戳偏移的服务）`。具体查看 RFC 1323（PAWS） 和 RFC 6191。
 
+```
+tcp_tw_recycle 会将同一链接上时间戳小于当前记录时间戳的报文直接丢弃。因此， 开启该选项必须保证报文中的时间戳是单调递增的。在 Linux 4.10 开始， 官方修改 TCP 时间戳的生成机制， 可能出现不单调递增的连续报文， 所以此配置项被弃用。
+```
 
+### #tcp_tw_reuse （Boolean；默认：0；Linux 2.4.19/2.6 - ）
 
+允许在协议认为安全的情况下， 新的链接复用处于 `TIME_WAIT` 状态的 socket。`非技术专家不要轻易修改此配置项`。
 
+### #tcp_vegas_cong_avoid（Boolean；默认：0；Linux 2.2 - 2.6.13）
 
+开启 TCP Vegas 拥塞避免算法。此算法是 `sender-side-only` 发送方独有的改变，通过对网络带宽来预测拥塞可能的大小。TCP 通过修改拥塞窗口的大小来调整发送频率。Vegas 算法提供更少包的丢失， 但是不像 TCP Reno 算法那样激进。
 
+### #tcp_westwood（Boolean；默认： 0；Linux 2.4.26/2.6.3 - 2.6.13）
+
+开启 `WestWood+` 拥塞控制算法。此算法是 `sender-side-only` 基于 TCP `Reno` 算法修改来优化 TCP 拥塞控制的性能。它基于 `end-to-end（端对端）` 带宽预测在yige拥塞出现之后来设置拥塞窗口大小和慢启动阈值。使用带宽预测，TCP `WestWood+` 算法在发生拥塞时考虑到当前的带宽使用来适应性的设置慢启动阈值和拥塞窗口。此算法显著的在有线网络中提升公平性，在无线网络中提升吞吐量。
+
+### #tcp_window_scaling（Boolean;默认：1;Linux 2.2 - ）
+
+开启 RFC 1323 TCP 窗口缩放。允许在对端支持的时候， 使用更大的窗口尺寸（默认窗口大小是 16 bit， 2^16 = 64KB）。在需要使用大的窗口尺寸的时候， 应用程序可以提升 socket 缓存大小并开启此配置项。如果关闭 `tcp_window_scaling`，TCP 不会在建立链接的时候和对方沟通是否使用窗口缩放。
+
+### #tcp_wmem（Linux 2.4 - ）
+
+此配置项是包含 3 个值的向量： [`min`,`default`,`max`]。TCP 使用它们来调整发送缓存的尺寸。TCP 会根据下面介绍的默认值动态的调整发送缓存的大小（在系统内存允许的范围内）：
+
+- min 
+  每个 TCP socket 使用的最小发送缓存大小。默认值是系统内存页的尺寸（Linux 2.4 是 4KB）。TCP 保证在内存压力模式下， 申请小于此值的操作会被允许。此值不用于限制通过 `SO_SNDBUF` 设置的发送缓存的尺寸大小。
+
+- default
+  TCP socket 发送缓存的默认大小。此配置项会重写通过 `/proc/sys/net/core/wmem_default` 配置的所有协议栈的默认缓存尺寸。默认值是 `16 KB`。需要使用更大的发送缓存尺寸， 可以增大此值（`会影响所有的 socket`）。如果要采用更大的窗口大小， `/proc/sys/net/ipv4/tcp_window_scaling` 配置项需要设置为非零值（默认就是非零值）。
+
+- max
+  每个 TCP socket 发送缓存可以使用的最大尺寸。`此值不会重写 /proc/sys/net/core/wmem_max 配置项`。此配置项不是用来限制通过 `SO_SNDBUF` 声明的发送缓存尺寸。默认值的计算公式： `max(65536, min(4MB, tcp_mem[1]*PAGE_SIZE/128))`（Linux 2.4, 默认是 128 KB， 低内存系统 64KB）。
+
+### #tcp_workaround_signed_windows（Boolean；默认： 0；Linux 2.6.26 - ）
+
+当发送了 `window-scaling（窗口缩放）` 选项的报文没有收到回应的时候： 如果开启次配置， 就认为对方 TCP 出错；没开启次配置则不这么认为。
+
+## Socket 配置项
+
+通过 `getsocketopt` 和 `setsocketopt` 分别获取和设置 TCP Socket 的配置， 但是要设置 `level` 参数为 `IPPROTO_TCP`。除非另有说明， `optval` 就是一个 int 指针。另外， 大多数 `level` 为 `IPPROTO_IP` 的 socket 配置项都是用于 TCP。查看 `ip` 了解更多。
+
+下面介绍一些 TCP 特有的 socket 配置信息. 更多信息查看 `socket` 接口.
+
+### #TCP_CONGESTION (Linux 2.6.13 - )
+
+String. 此配置项设置 TCP 使用那种拥塞控制算法, 适用于每个 socket. 非特权进行只能在 `tcp_allowed_congestion_control` 定义的算法中选择使用. 特权进程可以选择任意的拥塞控制算法(查看 `tcp_available_congestion_control`).
+
+### #TCP_CORK (Linux 2.2 - )
+
+设置了此配置项, 不会发送 TCP 部分帧. 所有队列中的 TCP 部分帧只有在此配置项清除的时候才会发送.做为调用 `sendfile` 的前置头信息和 TCP 吞吐量优化的时候非常有用.在当前的实现中, `TCP_CORK` 最高会等待 200 毫秒. 当达到 200 毫秒的时候, 所有发送队列中的数据会直接发送.从 Linux 2.5.71 开始, 此配置可以和 `TCP_NODELAY` 配合使用. 如果代码追求可移植性, 不应使用此配置项(Linux 独有).
+
+### #TCO_DEEP_ACCEPT (Linux 2.4 - )
+
+允许只有在数据到达的时候, socket 的监听者才会被唤醒. 取整数值(`单位是秒`), 可以界定 TCP 完成链接的最大尝试次数. 如果代码追求可移植性, 不应使用此配置项(Linux 独有).
+
+### #TCP_INFO (Linux 2.4 - )
+
+用来获取当前 socket 的信息. 内核返回在 `/usr/include/linux/tcp.h` 文件中定义的 `struct tcp_info`. 如果代码追求可移植性, 不应使用此配置项(Linux 独有).
+
+### #TCP_KEEPCNT (Linux 2.4 - )
+
+TCP 在关闭 socket 链接之前发送 keepalive 的最大次数, 当设置了 socket 的`SO_KEEPALIVE` 配置项时有效. 如果代码追求可移植性, 不应使用此配置项(Linux 独有).
+
+### #TCP_KEEPIDLE (Linux 2.4 - )
+
+当前 TCP 链接在空闲了 `TCP_KEEPIDLE(秒)` 之后才会发送 keepalive 探测数据, 当设置了 `SO_KEEPALIVE` 配置项时有效. 如果代码追求可移植性, 不应使用此配置项(Linux 独有).
+
+### #TCP_KEEPINTVL (Linux 2.4 - )
+
+发送 TCP keepalive 探测数据的时间间隔(秒). 如果代码追求可移植性, 不应使用此配置项(Linux 独有).
+
+### #TCP_LINGER2 (Linux 2.4 - )
+
+处于 `FIN_WAIT2` 状态下的孤儿 socket 存活时间. 此配置项会重写当前 socket 在系统层面的 `/proc/sys/net/ipv4/tcp_fin_timeout` 配置. 不要和 `socket api` 中的 `SO_LINGER` 配置项混淆. 如果代码追求可移植性, 不应使用此配置项(Linux 独有).
+
+### #TCP_MAXMSG
+
+TCP 发出数据包的最大段尺寸. 在 Linux 2.2 之前或者Linux 2.6.28 之后, 当此配置项在链接建立之前设置, 也会影响发送到对端初始数据包的 MSS 尺寸. 超过 MTU 的值会被忽略. TCP 会在此值上强行界定最大和最小值.
+
+### #TCP_NODELAY
+
+设置此配置来关闭 `Nagle` 算法. 意味着所有的数据包即使很小也会尽快发送. 没有设置此配置项, 数据会一直缓存到足够的大小一起发送, 从而避免了因为发送大量小数据包而导致网络利用率下降. 此配置项会被 `TCP_CORK` 覆盖；但是可以在设置了 `TCP_CORK` 的时候使用此配置项显式的强制发送数据. 
+
+### #TCP_QUICKACK (Linux 2.4.4 - )
+
+是否开启 `quickack(快速确认)` 模式. 在快速确认模式下, ack 确认报文会立即发送, 即使根据 TCP 正常操作需要延迟. 这个标志不会常驻, 只是是否开启快速确认的开关. 后续的 TCP 操作是否再次进入或者取消快速确认模式, 取决于内部协议的处理和其他的因素, 例如延迟确认超时和数据传输. 如果代码追求可移植性, 不应使用此配置项(Linux 独有).
+
+```
+The thing that John Nagle doesn't adequately explain is that TCP_NODELAY is a send-side option, and TCP_QUICKACK is a receive-side option. That means the thing that TCP_NODELAY fixes for us is not fixed by TCP_QUICKACK: we'd need the server to set TCP_QUICKACK for us to safely turn off TCP_NODELAY.
+
+John Nagel 没有充分说明的是, TCP_NODELAY 是发送放的配置, TCP_QUICKACK 是接收放的配置. 这意味着 TCP_QUICKACK 并不能代替 TCP_NODELAY: 我们需要服务端设置 TCP_QUICKACK 来为我们安全的关闭 TCP_NODELAY.
+```
+
+### #TCP_SYNCNT(Linux 2.4 - )
+
+TCP 放弃链接之前 SYN 报文重传的最大次数. 不能超过 255. 如果代码追求可移植性, 不应使用此配置项(Linux 独有).
+
+### #TCP_USER_TIMEOUT (Linux 2.6.37 - )
+
+unsigned int. 大于 0 时, 指定了 TCP 因为未确认数据而强制关闭链接并返回 `ETIMEOUT` 的最长时间(单位毫秒). 等于 0 时, TCP 使用系统默认操作.
+
+增加用户超时时间, 可以在不用端对端的交互中延长 TCP 链接的存活时间. 减少用户超时时间则允许用户程序快速失败. 否则, 正常的 WAN 环境默认失败可能会延续 20 分钟.
+
+此配置项可以在 TCP 链接的任意状态设置, 但是在已同步状态(`ESTABLISHED`, `FIN_WAIT_1`, `FIN_WAIT_2`, `CLOSE_WAIT`, `LAST_ACK` 和 `CLOSING`)设置会更加有效. 此外, 当设置了 `SO_KEEPALIVE` 配置, `TCP_USER_TIMEOUT` 会重写该配置并决定在 keepalive 失败时何时关闭链接.
+
+当 TCP 重传或者 keepalive 探测包已经发送的时候, 此配置项没有效果.
+
+当在处于 listening 状态的 socket 设置了此配置时, 通过 `accept` 获取的 socket 链接会继承此配置.
+
+查看 RFC 793 和 RFC 5482 (`TCP 用户超时配置`) 获取更多信息.
+
+### #TCP_WINDOW_CLAMP (Linux 2.4 - )
+
+设置建议窗口大小. 内核会强制最小的尺寸 `SOCK_MIN_RCVBUF/2`. 如果代码追求可移植性, 不应使用此配置项(Linux 独有).
+
+## Sockets API
+
+TCP 对紧急数据形式的 `带外数据` 支持有限. 在 Linux 系统中意味着对端发送了新的紧急数据, 之前的紧急数据会被当作正常数据放进数据流中(`SO_OOBINLINE`没有设置也是一样). 这个 BSD 系统不一样.
+
+Linux 对 `紧急指针` 默认采用了和 BSD 兼容的解释. 这违反了 RFC 1122 规范, 但是也是为了和其他的协议栈互通. 可通过 `/proc/sys/net/ipv4/tcp_stdurg` 来修改.
+
+可以通过调用使用了 `MSG_PEEK` 选项的 `recv` API 来查看带外数据.
+
+从 Linux 2.4 开始, 支持使用 `MSG_TRUNC` 作为 `recv(recvmsg)` API 的 `flag` 参数. 使用这个标志, 会直接丢弃接收的数据, 而不是返回. 自 Linux 2.4.4 开始, `MSG_TRUNC` 选项和 `MSG_OOB` 结合使用的时候对带外数据也有同样的作用.
+
+## Ioctls
+
+下面介绍的 `ioctl` 方法返回信息并放进 `value` 参数中.
+```
+int value;
+error = ioctl(tcp_socket, ioctl_type, &value);
+```
+
+`ioctl_type` 取值如下:
+
+- SIOCINQ
+  
+  返回接收缓存中未读取的数据总数. socket 必须不是 `LISTEN` 状态, 否则返回 `EINVAL` 错误. `SIOCINQ` 在文件 `<linux/sockios.h>` 定义. 你也可以使用定义在 `<sys/ioctl.h>` 中的 `FIONREAD` 替换.
+
+- SIOCATMARK
+  
+  返回 `TRUE` (即: value 不是0), 当收入的数据流被标记为紧急.
+
+  如果 socket 配置 `SO_OOBINLINE` 为 `TRUE`, 并且 `SIOCATMARK` 返回 `TRUE`, 那么接下来从 socket 读取的数据被看作紧急数据. 如果 socket 配置 `SO_OOBINLINE` 没有设置, 但是 `SIOCATMARK` 返回 `TRUE`, 那么接下来从socket 读取的是紧急数据后面的数据(需要通过 `recv(MSG_OOB)` 返回真正的紧急数据).
+
+  注意: 永远不会读取超过 `urgent mark` 标记的位置. 如果应用程序通过 `select` 调用 (使用 `exceptfds` 参数) 或者通过传送 `SIGUSR` 信号知道了当前存在紧急数据, 可以通过不断的测试 `SIOCATMARK` 标志并且调用 `read` (读取任意字节数), 直到 `SIOCATMARK` 返回 `FALSE` 来获取全部的紧急数据(接收缓存走到了 `urgent mark` 的位置).
+
+- SIOCOUTQ
+  
+  返回 socket 发送队列中没有送出的数据总量. socket 必须不是 `LISTEN` 状态, 否则返回 `EINVAL` 错误. `SIOCOUTQ` 定义在 `<linux/sockios.h>` 头文件中. 也可以使用 `<sys/ioctl.h>` 头文件中的 `TIOCOUTQ` 替代.
+
+## 错误处理 (Error Handling)
+
+当出现网络错误时, TCP 会尝试重新发送数据包. 如果在一定时间内没有成功, 返回 `ETIMEOUT` 或者当前链接中最近收到的错误信息.
+
+有些应用程序要求快速报告错误. 可以通过设置 `IPPROTO_IP` 层级的 `IP_RECVERR` socket 配置项来实现. 当设置了此配置, 所有接收的错误信息立即返回给上层应用. 使用次配置需要注意: 它会使 TCP 在路由切换和其他网络条件减少容错性.
+
+# ERRORS
+
+## #EAFNOTSUPPORT
+传给 socket 的地址类型 `sin_family` 不是 `AF_INET`.
+
+## #EPIPE
+对端 socket 被不正常关闭 或者 本端读取了一个关闭的 socket.
+
+## #ETIMEOUT
+对端在一段时间内没有对重传数据确认.
