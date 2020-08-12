@@ -168,6 +168,102 @@ setsockopt(fd, SOL_SOCKET, SO_INCOMING_CPU, &spu, sizeof(cpu));
 
 ### #SO_LINGER
 
+设置或者获取 `SO_LINGER` 选项. 参数是 `linger` 结构:
+
+```c
+struct linger {
+    int l_onoff;   /* linger active */
+    int l_linger;  /* how many seconds to linger for */
+};
+```
+
+当开启此选项, 调用 `close(2)` 或者 `shutdown(2)` 的时候会等到当前 socket 发送缓存中的所有数据全部发送成功或者达到了 linger 的超时时间, 才会返回. 否则, 调用会直接返回并且在后台关闭链接. 如果 socket 是因为 `exit(2)` 而被动关闭, 通常都在后台进行.
+
+### #SO_LOCK_FILTER
+
+当设置了此选项的时候, 会阻止更改 socket 关联的过滤器. 这些过滤器是通过 `SO_ATTACH_FILTER`,`SO_ATTACH_BPF`, `SO_ATTACH_REUSEPORT_CBPF` 和 `SO_ATTACH_REUSEPORT_EBPF` 这些选项设置的.
+
+通常的使用方式是, 特权进程创建一个 `Raw Socket(需要 CAP_NET_RAW 功能)`, 应用一个过滤器, 设置 `SO_LOCK_FILTER` 选项, 然后放弃特权或者通过 `UNIX Domain Socket` 将当前 socket 的文件描述符传递给另外一个非特权的进程.
+
+一旦开启了 `SO_LOCK_FILTER` 选项, 企图修改或者删除 socket 已绑定的过滤器, 或者取消 `SO_LOCK_FILTER` 选项都会失败并返回 `EPERM` 错误.
+
+### #SO_MARK (Linux 2.6.25)
+
+对当前 socket 发送的所有数据包设置标记(和 `netfilter MARK` 很像, 但是此选项是针对 scoket的). 改变标记可以用于实现基于标记的路由, 不用使用 netfilter 或者数据包过滤. 设置此选项需要获取 `CAP_NET_ADMIN` 权限.
+
+### #SO_OOBINLINE
+
+如果开启此选项, `out-of-band(带外数据, 紧急数据)` 直接放到 socket 的接收数据流中. 否则,
+`out-of-band(带外数据, 紧急数据)` 只有在接收数据时设置了 `MSG_OOB` 标志才会传递.
+
+### #SO_PASSCRED
+
+是否开启接收 `SCM_CREDENTIALS` 控制消息. 查看 `unix(7)` 了解更多.
+
+### #SO_PASSSEC
+
+是否开启接收 `SCM_SECURITY` 控制消息.  查看 `unix(7)` 了解更多.
+
+### #SO_PEEK_OFF (Linux 3.4 - )
+```
+MSG_PEEK 返回数据但是不会删除数据, recv() 不带 MSG_PEEK 返回数据并且删除已返回的数据
+```
+
+此选项目前仅适用于 `unix(7)` socket, 作用是设置系统调用 `recv(2)` 的 `peek offset` 偏移量, 和 `MSG_PEEK` 标志配合使用.
+
+当此选项设置为负值(新创建的 socket 设置为 -1 )的时候, 传统行为是:
+带有 `MSG_PEEK` 标志的 `recv` 调用会从队列头开始 `peek` 数据.
+
+当此选项设置非负值( >= 0 )时, 下一次 `peek` 接收队列的数据是从此选项指定的字节数开始. 同时, `peek offset` 会基于之前的已经 `peek` 的偏移量增加, 所以接下来的 `peek` 会返回队列中偏移量随后的数据.
+
+如果接收队列前端的数据被不带 `MSG_PEEK` 的 `recv(2)` 调用删除, `peek offset` 会随之减少删除的字节数. 换句话说, 不带 `MSG_PEEK` 的 `recv(2)` 会导致 `peek offset` 重新调整来维护正确的位置, 所以接下来的 `peek` 调用会取回那些已经取回过的但是没有删除的数据.
+
+
+对于数据报 socket (UDP socket) 来说, 如果 `peek offset` 指向一个数据包的中点, 返回的数据带着 `MSG_TRUNC` 标记.
+
+下面的代码阐述了 `SO_PEEK_OFF` 的用法. 假设一个数据流 socket 接收到以下数据:
+```
+aabbccddeef
+```
+接下来的 `recv(2)` 调用的影响都体现在代码注释中:
+ 
+```c
+int ov = 4; //设置 peek offset 为 4, 表示 peek 从 4 开始
+setsockopt(fd, SOL_SOCKET, SO_PEEK_OFF, &ov, sizeof(ov));
+
+recv(fd, buf, 2, MSG_PEEK);  // Peek "cc"; offset set to 6
+recv(fd, buf, 2, MSG_PEEK);  // Peek "dd"; offset set to 8
+recv(fd, buf, 2, 0);         // Reads "aa"; offset set to 6
+recv(fd, buf, 2, MSG_PEEK);  // Peeks "ee"; offset set to 8
+
+```
+
+### #SO_PEERCRED
+
+返回链接到 socket 的 peer 进程的认证信息. 查看 `unix(7)` 了解更多.
+
+### #SO_PRIORITY
+
+为当前 socket 准备发送的所有数据包设置 `protocol-defined(协议定义)` 的优先级. Linux
+使用此值来对网络队列进行排序: 拥有高优先级的数据包会根据选中的网络设备队列纪录优先处理. 设置 0-6 之外的优先级需要程序获取到 `CAP_NET_ADMIN` 权限.
+
+### #SO_PROTOCOL (Linux 2.6.32 - )
+
+获取当前 socket 的协议类型并以 Integer 形式返回, 例如: `IPPROTO_SCTP`. 查看 `socket` 了解更多. 此选项是只读的.
+
+### #SO_RCVBUF
+
+获取或者设置 socket 接收缓存的最大字节数. 当使用 `setsockopt(2)` 来设置的时候, `内核会将此值乘以 2 `(为了允许保存内核对数据的前置标记信息), 使用 `getsockopt(2)` 获取的时候也会返回 `此值乘以 2 ` 的结果. 默认值设置在 `/proc/sys/net/core/rmem_default` 文件, 最大值设置在 `/proc/sys/net/core/rmem_max` 文件. 最小值 (`乘以2`) 是 256.
+
+### #SO_RCVBUFFORCE (Linux 2.6.14 - )
+
+特权进程 (获取了 `CAP_NET_ADMIN` 权限) 使用此  socket 选项和设置 `SO_RCVBUF` 选项效果一样, `但是 rmem_max 可以被重写`.
+
+### #SO_RCVLOWAT, SO_SNDLOWAT
+
+socket 缓存中数据的字节数达到此值时, 才会发送给底层协议栈 (`SO_SNDLOWAT`) 或者上层等待接收的用户程序(`SO_RCVLOWAT`). 这两个选项初始值都是 `1`. Linux 上 `SO_SNDLOWAT` 选项不可改变(`setsockopt(2)`会失败并返回 `ENOPROTOOPT` 错误). Linux 2.4 之后才能设置 `SO_RCVLOWAT` 选项.
+
+Linux 2.6.28 之前, 使用 `select(2)`, `poll(2)` 和 `epoll(2)` 不会遵循 `SO_RCVLOWAT`设置, 只要 socket 中有可读数据就会直接返回. 接下来从 socket 读取的时候会一直阻塞, 直到 socket 接收缓存达到 `SO_RCVLOWAT` 个字节. Linux 2.6.28 开始, 只有最少 `SO_RCVLOWAT` 字节可读的时候, `select(2)`, `poll(2)` 和 `epoll(2)` 才会返回.
 
 
 
