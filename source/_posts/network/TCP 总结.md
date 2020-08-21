@@ -211,22 +211,104 @@ TCP 引入了一些技术来网络流控, Sliding Window就是其中之一. `TCP
 - TCP_CORK 开启的时候, 表示手动打开延时发送, 直到`手动关闭此选项`或者`达到 200ms`的时候, 才会发送数据
 - TCP_NODELAY 是发送方的限流配置, TCP_QUICKACK 是接收放的限流配置
 
-
 ### 问题11 Congestion Handling 拥塞控制机制
 
+上面介绍的滑动窗口是通过双方的接收缓存尺寸来做流量控制, 无法反映出链路中的真实流量状况, TCP 作为传输层的协议需要清楚的了解链路中的所有事情.
+
+前面介绍了 TCP 通过对 RTT 的采样来计算出 RTO, 但是因为网络的状况是在实时改变的, `如果网络上的延时突然增加, 那么, 从上面提到的 TCP 对这个事情做出的应对策略只有重传数据包, 但是, 这样会更加加重网络的负担, 接着就会出现更大的延迟出现和更多的丢包发生, 最终会进入恶性循环, 大量的 TCP 同时发生这样的状况甚至会托跨整个网络`.
+
+因此, TCP 协议不能够忽略网络链路上面发生的事情而无脑的一直重发数据. 对此, TCP 的设计理念是: TCP 在拥塞发生的时候, 要做出自我牺牲, 主动放慢数据发送速度, 避免加重拥塞. 
+
+TCP 的拥塞控制主要有四种算法: `慢启动`,`拥塞避免`, `拥塞发生` 和 `快速恢复`.
+
+#### 慢热启动算法 Slow Start
+   
+TCP 刚刚建立链接的时候, 不要马上开启全速发送数据, 而是要一点一点提升数据的发送速度.
+慢启动算法包含了 CWND (Congestion Window: 拥塞窗口), 具体的流程如下:
+1. 刚建立的链接, CWND 默认是 1, 表示只能发送 1 个 MSS 大小的数据
+2. 发送方没收到一个 ACK, CWND++, 呈线性增长
+3. 每当过了一个 RTT, CWND*2, 呈指数增长
+4. 还有一个 SSTHRESH (Slow Start Threshold), 是一个上限, 当 CWND >= SSTHRESH 时, 就会进入`拥塞避免算法`
+
+```
+注意: CWND * MSS <= WIN
+发送的数据的字节数还是要受到滑动窗口大小的限制
+``` 
+
+可以看出发送速度和网络的状况有很大的关系, 如果网络很快, 那么 ACK 返回速度也很快, RTT 时间很小, 所以发包的速度很快就会达到 SSTHRESH, 慢启动算法在这种情况下一点也不慢.
+
+```
+Linux 3.0 之后, TCP 的初始 CWND 增大到了 10. 而在Linux 3.0 之前, 初始的 CWND 是根据 MSS 的值来确定的. 
+例如在 Linux 2.6, 如果 MSS < 1095, 则 CWND = 4； 如果 MSS > 2190, 则 CWND = 2；其他情况 CWND = 3.
+```
+
+#### 拥塞避免算法 (Congestion Avoidance)
+
+上面说的 CWND >= SSTHRESH 的时候, 会进入拥塞避免算法. 一般来说 SSTHRESH 的值是 65535 (字节).
+算法如下:
+
+1. 收到 ACK, CWND = CWND + 1/CWND
+2. 每经过 RTT 的时间, CWND = CWND + 1
+
+这个算法是线性增长的, 是为了避免发生网络拥塞.
+
+#### 拥塞状态的算法
+
+当发生丢包的时候, 会出现两种情况:
+
+1. 等到 RTO 超时, 重传数据包.
+
+   - SSTHRESH = cwnd / 2
+   - cwnd 重置为 1
+   - 进入慢启动过程
+
+2. 连续收到 3 个重复的 ACK, 自动开启重传
+
+    - TCP Tahoe 的实现和 RTO 一样(只是不用等到 RTO 的时间)
+    - TCP Reno的实现
+
+        - CWND = CWND / 2
+        - SSTHRESH = CWND
+        - 进入快速恢复算法
 
 
+上面可以看出, RTO 超时之后, SSTHRESH 会变成 CWND 的一半, TCP 是在试探网络能够承载的最大流量
 
+#### 快速恢复算法 (Fast Recovery)
 
+1. TCP Reno
 
+快速重传和快速恢复算法一般同时使用. 快速恢复算法认为, 能够连续接受到 3 个重复的 ACK 并且都没有达到 RTO, 说明网络状况并没有那么糟糕, 所以没必要像 RTO 那么激烈的反应. 注意: 在进入快速恢复之前, SSTHRESH 和 CWND 都已经被更改.
 
+算法如下:
 
+- CWND = SSTHRESH + 3 * MSS (3 表示收到了 3 个重复的 ACK)
+- 重传重复 ACK 指定的数据包 (只会重传一个数据包)
+- 如果在收到重复的 ACK, CWND = CWND + 1
+- 如果收到了新的 ACK, 那么 CWND = SSTHRESH, 然后就进入了拥塞避免算法
 
+此算法的问题体现在, 过于依赖 3 个重复的 ACK. 收到 3 个重复的 ACK 并不代表只丢失了一个数据包, 但是此算法只会重传一个, 并且将 CWND 进行减半. 如果大量的数据包丢失, CWND 就会指数下降, 并且不会出发 Fast Recovery 算法.
 
+2. TCP New Reno
 
-- 三次握手
-- 四次挥手
-- 滑动窗口
-- 拥塞控制
-- 超时重传
-- Keep-Alive
+如果双方都实现了 SACK, 则可以清晰的知道丢失了多少包, 重传和恢复策略会更加智能. 但是对于不支持 SACK 的情况, 需要改进快速重传算法.
+
+TCP New Reno 算法的改进如下:
+
+- 当 Sender 收到了 3 个重复的 ACK, 进入快速重传模式, 开始重传 ACK 指示的数据包. 如果只丢失了一个数据包, 那么接下来的 ACK 会覆盖所有 Sender 已经发送数据包的 SeqNum. 如果没有覆盖, 说明不止一个包丢失.  我们把这个 ACK 称之为 Partial ACK (部分 ACK).
+- 一旦 Sender 发现了 Partial ACK, Sender 就会知道多个包丢失, 于是会重传未被 ACK 覆盖的第一个数据包, 直到再也收不到 Partial ACk, 才会结束 Fast Recovery.
+
+#### FACK 算法
+
+Forward Acknowledgment 算法, 是基于 SACK 的算法. SACK 可以清楚的告诉 Sender 哪些包丢失, 如果丢失的包过多, 大量的重传也会加剧网络的拥塞, FACK 算法就是用来做重传过程中的拥塞流控.
+
+- FACK 算法在发送端引入了新的变量 snd.fack, 用来保存接收端已经接收到的最大的 SeqNum
+- 在非拥塞状态则和 snd.una (`snd.una 指向滑动窗口最左边的位置`) 一样处理. 
+- 在拥塞状态下, snd.fack 保存着 SACK 报文 SeqNum 的最大值, 即: 接收端已经接收报文的最大 SeqNum.
+- 定义 awnd = snd.nxt - snd.fack (`snd.nxt 指向了滑动窗口中即将被发送数据的位置`), 这样 awnd 就是网络上的数据. (awnd: actual quantity of data outstanding in the network)
+- 如果需要重传数据, 那么, awnd = snd.nxt - snd.fack + retran_data, 即: awnd = 已经传出去的数据 + 重传的数据
+- 触发 Fast Recovery 的条件是: ((snd.fack - snd.una) > (3*MSS)) || (dupacks == 3). 这样一来, 就不需要等到 3 个重复的 ACK 才会重传, 而是只要 SACK 中最大的 SeqNum 和 ACK 中的 SeqNum 比较长了 (3 个 MSS), 就会触发重传. 
+- 重传的过程中, awnd 会受到 cwnd 的限制.
+- 重传过程中, cwnd 不变, 直到 snd.nxt <= snd.una (`重传的数据都被确认了`), 然后会进入正常的拥塞避免机制, cwnd 开始线性上涨.
+
+先写到这里吧.
